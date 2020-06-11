@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import os
-from logger import Logger
+import logger
 import argparse
 import configparser
-
+from sys import stdout, exit
 
 parser = argparse.ArgumentParser(description="A Twitter bot to revert tweets and reply to @oednaldopereira")
 parser.add_argument("-c", "--config", action="store", required=False, dest="config_file",
@@ -15,16 +14,35 @@ parser.add_argument("-d", "--debug", required=False, action="store_true", dest="
                     help="Enable debug messages.")
 args = parser.parse_args()
 
-DEBUG = args.debug
-CONFIG_FILE = args.config_file
-
-if os.path.isfile(CONFIG_FILE):
-    Logger.file_write = True
-
-Logger.info("Teste")
 
 config = configparser.ConfigParser()
-config.read(CONFIG_FILE)
-print(config)
+try:
+    if not config.read(args.config_file):
+        if args.config_file == './ednaldo_reverso.ini':
+            config['logging'] = {
+                'log_file': 'ednaldo.log',
+                'log_level': 'info',
+            }
+
+            config['twitter'] = {
+                'secret': '',
+                'key': ''
+            }
+
+            with open(args.config_file, 'w') as dcf:
+                config.write(dcf)
+
+        else:
+            logger.emergency_log("Cannot open config file, check parameters. Exiting...", 1)
+except Exception as e:
+    logger.emergency_log(str(e), 2)
 
 
+logger.init_logger(
+    log_level=logger.LogLevel.DEBUG if args.debug else logger.LogLevel.INFO,
+    log_file=config['logging']['log_file']
+)
+
+logger.Logger.info("Teste")
+logger.Logger.warning("Teste2")
+logger.Logger.error("Teste3")
