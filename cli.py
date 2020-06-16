@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import config
-import twitter
-import configparser
-
-
-def main():
-    print("ok")
-
+from erb import bot, config, database
 
 if __name__ == '__main__':
-    main()
+    if config.config.getboolean('runtime', 'createdb'):
+        database.create_database()
+
+    bot.start()

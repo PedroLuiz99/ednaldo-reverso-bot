@@ -141,3 +141,4 @@ cython_debug/
 
 ednaldo_reverso.ini
 ednaldo.log
+ednaldo.db

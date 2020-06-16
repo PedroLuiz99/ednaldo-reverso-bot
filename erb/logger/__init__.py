@@ -83,12 +83,12 @@ class Logger:
 
     @staticmethod
     def warning(message, break_line=True):
-        Logger.write_log(message, break_line=break_line, level=LogLevel.INFO)
+        Logger.write_log(message, break_line=break_line, level=LogLevel.WARNING)
 
     @staticmethod
     def error(message, break_line=True):
-        Logger.write_log(message, break_line=break_line, level=LogLevel.INFO)
+        Logger.write_log(message, break_line=break_line, level=LogLevel.ERROR)
 
     @staticmethod
     def debug(message, break_line=True):
-        Logger.write_log(message, break_line=break_line, level=LogLevel.INFO)
+        Logger.write_log(message, break_line=break_line, level=LogLevel.DEBUG)
