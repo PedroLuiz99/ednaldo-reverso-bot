@@ -14,6 +14,13 @@ class LogLevel(Enum):
     DEBUG = 40
 
 
+colors = {
+    'INFO': '\033[94m',
+    'DEBUG': '\033[92m',
+    'WARNING': '\033[93m',
+    'ERROR': '\033[91m',
+}
+
 DISABLE_FILE_WRITE = False
 LOG_LEVEL = LogLevel.INFO
 LOG_FILE = None
@@ -44,16 +51,18 @@ class Logger:
         global DISABLE_FILE_WRITE
         _caller = caller.caller_name(2)
 
-        formatted_message = "{blb}[{date}] [{level}] [{frame}] {message} {bla}".format(
+        level_stdout = "{level_color}[{level}]\033[0m".format(level=level.name.lower(), level_color=colors[level.name])
+        level_file = "[{level}]".format(level=level.name.lower())
+
+        formatted_message = "{blb}[{date}] #LEVEL# [{frame}] {message} {bla}".format(
             date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            level=level.name.lower(),
             frame=_caller,
-            message=message,
+            message=str(message),
             bla=Logger.breaks[break_line],
             blb=Logger.breaks[break_line_before]
         )
 
-        stdout.write(formatted_message)
+        stdout.write(formatted_message.replace('#LEVEL#', level_stdout))
         stdout.flush()
 
         if DISABLE_FILE_WRITE:
@@ -61,7 +70,7 @@ class Logger:
         try:
             try:
                 with open(LOG_FILE, 'a') as lf:  # noqa
-                    lf.write(formatted_message)
+                    lf.write(formatted_message.replace('#LEVEL#', level_file))
             except FileNotFoundError:
                 raise Exception("No such directory for logging, check config.")
             except PermissionError:
@@ -91,4 +100,6 @@ class Logger:
 
     @staticmethod
     def debug(message, break_line=True):
+        if LOG_LEVEL != LogLevel.DEBUG:
+            return
         Logger.write_log(message, break_line=break_line, level=LogLevel.DEBUG)
