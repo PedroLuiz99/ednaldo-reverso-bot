@@ -9,14 +9,15 @@ import twitter
 import requests
 
 from erb import database
-from erb.reverter import revert_video
+from erb.reverter import revert_video, revert_photo
 from erb.config import config
 from erb.logger import Logger
 
 TWITTER_USER = None
 
 
-def download_media(url):
+def download_media(url, fmt):
+    # TODO: REMOVER SELETOR DE FORMATO
     try:
         pathlib.Path(config['paths']['download_path']).mkdir(exist_ok=True)
     except OSError as e:
@@ -26,7 +27,7 @@ def download_media(url):
 
     try:
         internal_media_id = uuid.uuid4()
-        video_path = os.path.join(config['paths']['download_path'], "{}.mp4".format(internal_media_id))
+        video_path = os.path.join(config['paths']['download_path'], "{}.{}".format(internal_media_id, fmt))
         video = requests.get(url, allow_redirects=True)
         open(video_path, 'wb').write(video.content)
         return {
@@ -35,6 +36,53 @@ def download_media(url):
         }
     except Exception as e:
         raise
+
+
+def fetch_replies(api):
+    store_count = 0
+    since = 0
+    while True:
+        replies = api.GetReplies(since_id=since)
+        for reply in replies:
+            if hasattr(reply, 'in_reply_to_screen_name') and \
+                    reply.in_reply_to_screen_name == config['twitter']['seek_user']:
+                assert database.store_tweet(reply.id, 1,
+                                            'https://twitter.com/{}/status/{}'.format(reply.user.screen_name, reply.id))
+                Logger.debug("\tStored tweet ID {}".format(reply.id))
+                since = reply.id if reply.id > since else since
+                store_count += 1
+
+        if len(replies) < 20:
+            break
+    Logger.info("\tStored {} replied tweets to database.".format(store_count))
+
+
+def process_media(tweet):
+    processed_media = []
+    for media in tweet.media:
+        if media.type == 'video':
+            url = ''
+            for v in media.video_info['variants']:
+                if v['content_type'] == 'video/mp4':
+                    url = v['url']
+                    Logger.info("Video found, downloading...")
+                    Logger.debug("\tVideo URL: {}".format(url))
+                    break
+
+            if url:
+                try:
+                    downloaded = download_media(url, 'mp4')
+                    processed_media.append(revert_video(**downloaded))
+                except Exception as e:
+                    Logger.error("Error downloading media!")
+                    Logger.debug("\tException: {}".format(str(e)))
+
+        elif media.type == 'photo':
+            Logger.info("\tPhoto found, downloading...")
+            downloaded = download_media(media.media_url_https, 'png')
+            processed_media.append(revert_photo(**downloaded))
+
+    return processed_media
 
 
 def start():
@@ -56,37 +104,26 @@ def start():
     Logger.info("Feching last replied tweet")
     last_replied = database.get_last_replied_tweet()
 
-    if not last_replied:
-        Logger.info("No tweets found, getting last 20 tweets.")
+    if last_replied is None:
+        Logger.info("No tweets found, processing timeline and getting last 20 tweets.")
+        fetch_replies(api)
         get_since = None
     else:
-        get_since = last_replied[0]
+        get_since = last_replied
 
     statuses = api.GetUserTimeline(TWITTER_USER.id, since_id=get_since)
 
     for status in statuses:
         Logger.info("Processing tweet {}".format(status.id))
+
         text = re.sub('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '',
                       status.text)[::-1]
+        Logger.debug("Tweet text: {}".format(text))
         Logger.info("\tProcessing media...")
-        for media in status.media:
-            if media.type == 'video':
-                url = ''
-                for v in media.video_info['variants']:
-                    if v['content_type'] == 'video/mp4':
-                        url = v['url']
-                        Logger.info("\tVideo found...")
-                        Logger.debug("\t\tVideo URL: {}".format(url))
-                        break
+        processed_media = []
+        if status.media is not None:
+            processed_media = process_media(status)
 
-                if url:
-                    try:
-                        downloaded = download_media(url)
-                        revert_video(**downloaded)
-                    except Exception as e:
-                        Logger.error("\tError downloading media!")
-                        Logger.debug("\t\tException: {}".format(str(e)))
-
-            elif media.type == 'image':
-                pass
-                # TODO: PROCESSAR  IMAGEM
+        posted = api.PostUpdate(status=text, media=processed_media, in_reply_to_status_id=status.id)
+        Logger.info(str(posted))
+        sys.exit(0)

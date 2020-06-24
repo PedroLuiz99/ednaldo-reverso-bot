@@ -20,7 +20,7 @@ def query(sql, params=None, return_dataset=True):
             result = cursor.execute(sql, params)
             if return_dataset:
                 return result.fetchall()
-            return result.rowcount()
+            return result.rowcount
     except Exception as e:
         Logger.debug("Error executing statement: \nStatement: {}\nParameters: {}\nException: {}".format(
             sql,
@@ -51,15 +51,18 @@ def create_database():
 
 def store_tweet(tweet_id, code, link):
     try:
-        res = execute("""INSERT INTO tweets VALUES (?, ?, ?, ?)""", (tweet_id, code, datetime.now(timezone.utc), link), )
+        res = execute("""INSERT INTO tweets VALUES (?, ?, ?, ?)""",
+                      (tweet_id, code, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), link), )
         return bool(res)
     except Exception as e:
+        Logger.info("Error storing tweet!")
+        Logger.debug(str(e))
         return False
 
 
 def get_last_replied_tweet():
     try:
-        return query("SELECT * FROM tweets WHERE replied = 1 ORDER BY replied_on DESC LIMIT 1")
+        return query("SELECT MAX(id) FROM tweets WHERE replied = 1")[0][0]
     except Exception as e:
         Logger.error("Cannot fetch tweet history!")
         raise
