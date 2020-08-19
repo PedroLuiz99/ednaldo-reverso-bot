@@ -39,7 +39,8 @@ try:
                 'consumer_secret': '',
                 'access_token': '',
                 'access_secret': '',
-                'seek_user': 'oednaldopereira'
+                'seek_user': 'oednaldopereira',
+                'origin_user': 'arierepodlandeo'
             }
 
             config['database'] = {
@@ -72,7 +73,7 @@ config['runtime'] = {
     'start': args.start_bot
 }
 logger.init_logger(
-    log_level=logger.LogLevel.DEBUG if args.debug or config['logging'][
-        'log_level'] == 'debug' else logger.LogLevel.INFO,
+    log_level=logger.LogLevel.DEBUG if args.debug or config['logging']['log_level'] == 'debug'
+    else logger.LogLevel.INFO,
     log_file=config['logging']['log_file']
 )

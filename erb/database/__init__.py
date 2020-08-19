@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 import sys
 import sqlite3
 from erb.config import config
@@ -8,6 +9,10 @@ from erb.logger import Logger
 from datetime import datetime, timezone
 
 dbf = config['database']['sqlite_file']
+
+if not os.path.isfile(dbf) and not config['runtime']['createdb']:
+    Logger.error("Database file not found! Please run with --createdb parameter.")
+    sys.exit(2)
 
 
 def query(sql, params=None, return_dataset=True):
@@ -43,13 +48,15 @@ def create_database():
             replied_on DATE,
             reply_link VARCHAR 
         );
-        """)
+        """, [])
     except Exception as e:
         Logger.error("Error initializing database!")
+        Logger.debug(str(e))
         sys.exit(6)
 
 
-def store_tweet(tweet_id, code, link):
+def store_tweet(tweet_id, code):
+    link = "https://twitter.com/{user}/status/{id}".format(user=config, id=tweet_id)
     try:
         res = execute("""INSERT INTO tweets VALUES (?, ?, ?, ?)""",
                       (tweet_id, code, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), link), )

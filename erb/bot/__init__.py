@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import time
 import uuid
 import pathlib
 import twitter
@@ -46,8 +47,7 @@ def fetch_replies(api):
         for reply in replies:
             if hasattr(reply, 'in_reply_to_screen_name') and \
                     reply.in_reply_to_screen_name == config['twitter']['seek_user']:
-                assert database.store_tweet(reply.id, 1,
-                                            'https://twitter.com/{}/status/{}'.format(reply.user.screen_name, reply.id))
+                assert database.store_tweet(reply.id, 1)
                 Logger.debug("\tStored tweet ID {}".format(reply.id))
                 since = reply.id if reply.id > since else since
                 store_count += 1
@@ -72,7 +72,7 @@ def process_media(tweet):
             if url:
                 try:
                     downloaded = download_media(url, 'mp4')
-                    processed_media.append(revert_video(**downloaded))
+                    processed_media.append({'type': 'video', 'path': revert_video(**downloaded)})
                 except Exception as e:
                     Logger.error("Error downloading media!")
                     Logger.debug("\tException: {}".format(str(e)))
@@ -80,7 +80,7 @@ def process_media(tweet):
         elif media.type == 'photo':
             Logger.info("\tPhoto found, downloading...")
             downloaded = download_media(media.media_url_https, 'png')
-            processed_media.append(revert_photo(**downloaded))
+            processed_media.append({'type': 'photo', 'path': revert_photo(**downloaded)})
 
     return processed_media
 
@@ -100,30 +100,46 @@ def start():
     except twitter.error.TwitterError as e:
         Logger.error("Error fetching user information: {}".format(str(e)))
         sys.exit(5)
+    while True:
+        Logger.info("Feching last replied tweet")
+        last_replied = database.get_last_replied_tweet()
 
-    Logger.info("Feching last replied tweet")
-    last_replied = database.get_last_replied_tweet()
+        if last_replied is None:
+            Logger.info("No tweets found, processing timeline and getting last 20 tweets.")
+            fetch_replies(api)
+            get_since = None
+        else:
+            get_since = last_replied
 
-    if last_replied is None:
-        Logger.info("No tweets found, processing timeline and getting last 20 tweets.")
-        fetch_replies(api)
-        get_since = None
-    else:
-        get_since = last_replied
+        statuses = api.GetUserTimeline(TWITTER_USER.id, since_id=get_since)
 
-    statuses = api.GetUserTimeline(TWITTER_USER.id, since_id=get_since)
+        for status in statuses:
+            Logger.info("Processing tweet {}".format(status.id))
 
-    for status in statuses:
-        Logger.info("Processing tweet {}".format(status.id))
+            text = re.sub('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '',
+                          status.text)[::-1]
+            Logger.debug("Tweet text: {}".format(text))
+            Logger.info("\tProcessing media...")
+            processed_media = []
+            if status.media is not None:
+                processed_media = process_media(status)
 
-        text = re.sub('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '',
-                      status.text)[::-1]
-        Logger.debug("Tweet text: {}".format(text))
-        Logger.info("\tProcessing media...")
-        processed_media = []
-        if status.media is not None:
-            processed_media = process_media(status)
+            Logger.info("Uploading media...")
+            uploaded_media = []
+            for media in processed_media:
+                if media['type'] == 'video':
+                    media_ = api.UploadMediaChunked(media=media['path'], media_category='tweet_video')
+                    Logger.info("Video uploaded, waiting server-side processing to continue...")
+                    time.sleep(10)
+                else:
+                    media_ = api.UploadMediaSimple(media=media['path'], media_category='tweet_video')
+                    Logger.info("Video uploaded, waiting server-side processing to continue...")
+                    time.sleep(10)
+                uploaded_media.append(media_)
+            posted = api.PostUpdate(status=text, media=uploaded_media, in_reply_to_status_id=status.id)
+            Logger.debug(str(posted))
+            database.store_tweet(posted.id, 1)
 
-        posted = api.PostUpdate(status=text, media=processed_media, in_reply_to_status_id=status.id)
-        Logger.info(str(posted))
-        sys.exit(0)
+        Logger.info("Finished! Waiting next execution...")
+        time.sleep(60)
+
